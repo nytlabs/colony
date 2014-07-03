@@ -18,7 +18,7 @@ func main() {
 	s := colony.NewService("Anthill", "1", lookupa, lookupHTTPa, daemona, daemonHTTPaddr)
 
 	log.Println("starting ticker")
-	ticker := time.NewTicker(time.Duration(5) * time.Second)
+	ticker := time.NewTicker(time.Duration(20) * time.Second)
 
 	go func() {
 		for {

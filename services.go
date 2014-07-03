@@ -32,12 +32,13 @@ type MessageID string
 // A Message wraps a payload of data, and contains everything required for
 // successful routing through NSQ between services
 type Message struct {
-	Topic         Topic
-	Payload       []byte
-	Time          time.Time
-	ResponseTopic Topic
-	ContentType   string
-	MessageID     MessageID
+	Topic         Topic     // topic message appears on
+	FromName      string    // name of originating service
+	Payload       []byte    // actual message content
+	Time          time.Time // time message was generated
+	ResponseTopic Topic     // responses to this message can be sent here
+	ContentType   string    // contentType of message
+	MessageID     MessageID // message id
 }
 
 // Handler is the message processing interface for any service.
@@ -50,26 +51,33 @@ type handlerIDPair struct {
 	id MessageID
 }
 
+type channelIDPair struct {
+	c  chan Message
+	id MessageID
+}
+
 // HandlerFuncs live in the service and handles messages that are responding to the
 // service
-type HandlerFunc func(Message) error
+type HandlerFunc func(chan Message) error
 
 // Service contains all the information for a service necessary for successful
 // routing of messages to and from that service
 type Service struct {
-	Name               string
-	ID                 string
-	i                  int // this is just for IDs #TODO make this not crap
-	handlers           map[MessageID]HandlerFunc
-	addHandlerChan     chan handlerIDPair
-	removeHandlerChan  chan MessageID
-	callHandlerChan    chan Message
-	producer           *nsq.Producer
-	nsqLookupdAddr     string
-	nsqLookupdHTTPAddr string
-	nsqdAddr           string
-	nsqdHTTPAddr       string
-	responseTopic      Topic
+	Name                string
+	ID                  string
+	i                   int // this is just for IDs #TODO make this not crap
+	handlers            map[MessageID]HandlerFunc
+	activeHandlers      map[MessageID]chan Message
+	addHandlerChan      chan handlerIDPair
+	activateHandlerChan chan channelIDPair
+	removeHandlerChan   chan MessageID
+	callHandlerChan     chan Message
+	producer            *nsq.Producer
+	nsqLookupdAddr      string
+	nsqLookupdHTTPAddr  string
+	nsqdAddr            string
+	nsqdHTTPAddr        string
+	responseTopic       Topic
 }
 
 // NewService returns a service associated with a specific NSQ daemon.
@@ -86,18 +94,20 @@ func NewService(name, id, nsqLookupdAddr, nsqLookupdHTTPAddr, nsqdAddr, nsqdHTTP
 		ContentType: "responses",
 	}
 	s := &Service{
-		Name:               name,
-		ID:                 id,
-		handlers:           make(map[MessageID]HandlerFunc),
-		addHandlerChan:     make(chan handlerIDPair),
-		removeHandlerChan:  make(chan MessageID),
-		callHandlerChan:    make(chan Message),
-		producer:           producer,
-		nsqLookupdAddr:     nsqLookupdAddr,
-		nsqLookupdHTTPAddr: nsqLookupdHTTPAddr,
-		nsqdAddr:           nsqdAddr,
-		nsqdHTTPAddr:       nsqdHTTPAddr,
-		responseTopic:      responseTopic,
+		Name:                name,
+		ID:                  id,
+		handlers:            make(map[MessageID]HandlerFunc),
+		activeHandlers:      make(map[MessageID]chan Message),
+		addHandlerChan:      make(chan handlerIDPair),
+		activateHandlerChan: make(chan channelIDPair),
+		removeHandlerChan:   make(chan MessageID),
+		callHandlerChan:     make(chan Message),
+		producer:            producer,
+		nsqLookupdAddr:      nsqLookupdAddr,
+		nsqLookupdHTTPAddr:  nsqLookupdHTTPAddr,
+		nsqdAddr:            nsqdAddr,
+		nsqdHTTPAddr:        nsqdHTTPAddr,
+		responseTopic:       responseTopic,
 	}
 	go s.start()
 	return s
@@ -114,20 +124,42 @@ func (s Service) start() {
 		case pair := <-s.addHandlerChan:
 			s.handlers[pair.id] = pair.h
 			log.Println("added handler for message with id", pair.id)
+		case pair := <-s.activateHandlerChan:
+			s.activeHandlers[pair.id] = pair.c
+			log.Println("activated handler for message with id", pair.id)
 		case id := <-s.removeHandlerChan:
 			delete(s.handlers, id)
 			log.Println("removed handler for message with id", id)
 		case msg := <-s.callHandlerChan:
-			log.Println("calling handler for message with id", msg.MessageID)
+			// try active handlers first
+			c, ok := s.activeHandlers[msg.MessageID]
+			if ok {
+				log.Println("sending message to active handler for message", msg.MessageID)
+				c <- msg
+				continue
+			}
+			log.Println("activating handler for message with id", msg.MessageID)
 			handler, ok := s.handlers[msg.MessageID]
 			if !ok {
 				log.Println("could not find message handler for id", msg.MessageID)
 				continue
 			}
-			err := handler(msg)
-			if err != nil {
-				log.Fatal(err.Error())
-			}
+			go func() {
+				c = make(chan Message, 1)
+				pair := channelIDPair{
+					c:  c,
+					id: msg.MessageID,
+				}
+				s.activateHandlerChan <- pair
+				c <- msg
+				err := handler(c)
+				if err != nil {
+					log.Println(err.Error())
+				}
+				log.Println("removing handler for message", msg.MessageID)
+				delete(s.handlers, msg.MessageID)
+				delete(s.activeHandlers, msg.MessageID)
+			}()
 		}
 	}
 }
@@ -143,6 +175,7 @@ func (s *Service) NewMessage(contentType string, payload []byte) Message {
 
 	return Message{
 		Topic:         from,
+		FromName:      s.Name,
 		Payload:       payload,
 		Time:          time.Now(),
 		ResponseTopic: s.responseTopic,
@@ -156,6 +189,7 @@ func (s *Service) NewMessage(contentType string, payload []byte) Message {
 func (s *Service) NewResponse(m Message, contentType string, payload []byte) Message {
 	return Message{
 		Topic:         m.ResponseTopic,
+		FromName:      s.Name,
 		Payload:       payload,
 		Time:          time.Now(),
 		ResponseTopic: s.responseTopic,

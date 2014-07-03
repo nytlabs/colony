@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"math/rand"
 
 	"github.com/nytlabs/colony"
 )
@@ -23,6 +24,10 @@ func main() {
 				log.Println("got bee", bee, "!")
 				m := s.NewResponse(bee, "Bees", []byte("thanks for the bee!"))
 				s.Produce(m, nil)
+				if rand.Float64() < 0.5 {
+					m = s.NewResponse(bee, "Bees", []byte("got any snkaes?"))
+					s.Produce(m, nil)
+				}
 			}
 		}
 	}()

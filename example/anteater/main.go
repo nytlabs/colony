@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"time"
 
 	"github.com/nytlabs/colony"
 )
@@ -23,10 +24,20 @@ func main() {
 		for {
 			select {
 			case ant := <-ants.C:
-				log.Println("got ant", ant)
+				log.Println("got ant", string(ant.Payload))
 				m := s.NewMessage("bees", []byte("bee! bzz bzz"))
-				s.Produce(m, func(m colony.Message) error {
-					log.Println(m)
+				s.Produce(m, func(c chan colony.Message) error {
+					m := <-c
+					log.Println("got response from", m.FromName, ":", string(m.Payload))
+					log.Println("waiting 5 more seconds just to see if anything better comes along")
+					ticker := time.NewTicker(time.Duration(5) * time.Second)
+					select {
+					case m := <-c:
+						log.Println("got ANOTHER response from", m.FromName, ":", string(m.Payload))
+					case <-ticker.C:
+						log.Println("got nothing, cleary", m.FromName, "doesn't give a s**t!")
+						// https://www.youtube.com/watch?v=4r7wHMg5Yjg
+					}
 					return nil
 				},
 				)
