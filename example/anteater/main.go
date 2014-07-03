@@ -29,8 +29,8 @@ func main() {
 				s.Produce(m, func(c chan colony.Message) error {
 					m := <-c
 					log.Println("got response from", m.FromName, ":", string(m.Payload))
-					log.Println("waiting 5 more seconds just to see if anything better comes along")
-					ticker := time.NewTicker(time.Duration(5) * time.Second)
+					log.Println("waiting 2 more seconds just to see if anything better comes along")
+					ticker := time.NewTicker(time.Duration(2) * time.Second)
 					select {
 					case m := <-c:
 						log.Println("got ANOTHER response from", m.FromName, ":", string(m.Payload))
