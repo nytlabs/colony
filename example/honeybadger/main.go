@@ -22,10 +22,10 @@ func main() {
 			select {
 			case bee := <-bees.C:
 				log.Println("got bee", bee, "!")
-				m := s.NewResponse(bee, "Bees", []byte("thanks for the bee!"))
+				m := s.NewResponse(bee, "HoneyBadgerEtiquette", []byte("thanks for the bee!"))
 				s.Produce(m, nil)
 				if rand.Float64() < 0.5 {
-					m = s.NewResponse(bee, "Bees", []byte("got any snkaes?"))
+					m = s.NewResponse(bee, "SnakeRequest", []byte("got any snkaes?"))
 					s.Produce(m, nil)
 				}
 			}

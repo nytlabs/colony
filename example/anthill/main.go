@@ -12,6 +12,7 @@ func main() {
 	lookupHTTPa := "localhost:4161"
 	daemona := "localhost:4150"
 	daemonHTTPaddr := "localhost:4151"
+
 	quitChan := make(chan bool)
 
 	log.Println("starting anteater service")
@@ -22,13 +23,13 @@ func main() {
 
 	go func() {
 		for {
-			select {
-			case <-ticker.C:
-				log.Println("ant!")
-				m := s.NewMessage("ants", []byte("ant!"))
-				s.Produce(m, nil)
-			}
+			<-ticker.C
+			log.Println("ant!")
+			m := s.NewMessage("ants", []byte("ant!"))
+			s.Produce(m, nil)
 		}
 	}()
+
 	<-quitChan
+
 }
