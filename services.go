@@ -128,9 +128,6 @@ func (s Service) start() {
 				log.Println("removing handler for message", pair.id)
 				delete(s.handlers, pair.id)
 			}()
-		case id := <-s.removeHandlerChan:
-			delete(s.handlers, id)
-			log.Println("removed handler for message with id", id)
 		case msg := <-s.callHandlerChan:
 			c, ok := s.handlers[msg.MessageID]
 			if !ok {
