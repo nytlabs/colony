@@ -35,7 +35,7 @@ func main() {
 					case m := <-c:
 						log.Println("got ANOTHER response from", m.FromName, ":", string(m.Payload))
 					case <-ticker.C:
-						log.Println("got nothing, cleary", m.FromName, "doesn't give a s**t!")
+						log.Println("got nothing, clearly", m.FromName, "doesn't give a s**t!")
 						// https://www.youtube.com/watch?v=4r7wHMg5Yjg
 					}
 					return nil
