@@ -7,7 +7,7 @@ import (
 	"github.com/nytlabs/colony"
 )
 
-func responseHandler(c chan colony.Message) error {
+func responseHandler(c <-chan colony.Message) error {
 	d, _ := time.ParseDuration("500ms")
 	timeoutTimer := time.NewTimer(d)
 	var m colony.Message
@@ -31,27 +31,26 @@ func responseHandler(c chan colony.Message) error {
 }
 
 func main() {
-	lookupa := "localhost:4160"
 	lookupHTTPa := "localhost:4161"
 	daemona := "localhost:4150"
 	daemonHTTPaddr := "localhost:4151"
 	quitChan := make(chan bool)
 
 	log.Println("starting anteater service")
-	s := colony.NewService("Anteater", "1", lookupa, lookupHTTPa, daemona, daemonHTTPaddr)
+	s := colony.NewService("Anteater", "1", lookupHTTPa, daemona, daemonHTTPaddr)
 
 	log.Println("starting ant consumer")
-	ants := s.NewConsumer("ants")
 
-	go func() {
+	go s.Consume("ants", func(ants <-chan colony.Message) error {
 		for {
-			ant := <-ants.C
+			ant := <-ants
 			log.Println("got ant", string(ant.Payload))
 			m := s.NewMessage("bees", []byte("bee! bzz bzz"))
 
 			s.Produce(m, responseHandler)
 		}
-	}()
-
+		return nil
+	},
+	)
 	<-quitChan
 }
