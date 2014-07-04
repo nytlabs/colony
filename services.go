@@ -14,74 +14,73 @@ import (
 	"github.com/bitly/go-nsq"
 )
 
-// Topic contains the components of an NSQ Topic used for communication between
+// topic contains the components of an NSQ topic used for communication between
 // services
-type Topic struct {
+type topic struct {
 	ServiceName string
 	ServiceID   string
 	ContentType string
 }
 
-// GetName returns the properly formatted topic name from a Topic
-func (t Topic) GetName() string {
+// getName returns the properly formatted topic name from a topic
+func (t topic) getName() string {
 	return t.ServiceName + "-" + t.ServiceID + "-" + t.ContentType
 }
 
-type MessageID string
+type messageID string
 
 // A Message wraps a payload of data, and contains everything required for
-// successful routing through NSQ between services
+// successful routing through NSQ between services. Generally
+// NewMessage should be used to generate outbound messages and NewResponse to generate responses.
 type Message struct {
-	Topic         Topic     // topic message appears on
 	FromName      string    // name of originating service
 	Payload       []byte    // actual message content
 	Time          time.Time // time message was generated
-	ResponseTopic Topic     // responses to this message can be sent here
 	ContentType   string    // contentType of message
-	MessageID     MessageID // message id
-}
-
-// Handler is the message processing interface for any service.
-type Handler interface {
-	HandleMessage(Message) error
+	MessageID     messageID // message id
+	responseTopic topic     // responses to this message can be sent here
+	topic         topic     // topic message appears on
 }
 
 type handlerIDPair struct {
-	h  HandlerFunc
-	id MessageID
+	h  Handler
+	id messageID
 }
 
-// HandlerFuncs live in the service and handles messages that are responding to the
-// service
-type HandlerFunc func(chan Message) error
+// Handlers recieve a stream of Messages over the suppled channel
+// in response to a corresponding outbound message. Each service needs
+// to provide a Handler for each content type it consumes, and for
+// each outbound message that can be responded to.
+type Handler func(<-chan Message) error
 
 // Service contains all the information for a service necessary for successful
-// routing of messages to and from that service
+// routing of messages to and from that service. To initialise a service use NewService.
 type Service struct {
-	Name               string
-	ID                 string
-	i                  int // this is just for IDs #TODO make this not crap
-	handlers           map[MessageID]chan Message
+	Name               string // Name of the service
+	ID                 string // ID of the service
+	i                  int    // this is just for IDs #TODO make this not crap
+	handlers           map[messageID]chan Message
 	addHandlerChan     chan handlerIDPair
-	removeHandlerChan  chan MessageID
 	callHandlerChan    chan Message
 	producer           *nsq.Producer
-	nsqLookupdAddr     string
 	nsqLookupdHTTPAddr string
 	nsqdAddr           string
 	nsqdHTTPAddr       string
-	responseTopic      Topic
+	responsetopic      topic
 }
 
-// NewService returns a service associated with a specific NSQ daemon.
-func NewService(name, id, nsqLookupdAddr, nsqLookupdHTTPAddr, nsqdAddr, nsqdHTTPAddr string) *Service {
+// NewService returns a colony service associated with a specific NSQ setup.
+// Provide NSQ's lookupd HTTP address, and both the NSQ
+// daemon's TCP and HTTP addresses. If running the default NSQ these
+// ports are :4161, :4150, and :4151 respectively.
+func NewService(name, id, nsqLookupdHTTPAddr, nsqdAddr, nsqdHTTPAddr string) *Service {
 	conf := nsq.NewConfig()
 	err := conf.Set("lookupd_poll_interval", "5s")
 	producer, err := nsq.NewProducer(nsqdAddr, conf)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	responseTopic := Topic{
+	responsetopic := topic{
 		ServiceName: name,
 		ServiceID:   id,
 		ContentType: "responses",
@@ -89,16 +88,14 @@ func NewService(name, id, nsqLookupdAddr, nsqLookupdHTTPAddr, nsqdAddr, nsqdHTTP
 	s := &Service{
 		Name:               name,
 		ID:                 id,
-		handlers:           make(map[MessageID]chan Message),
+		handlers:           make(map[messageID]chan Message),
 		addHandlerChan:     make(chan handlerIDPair),
-		removeHandlerChan:  make(chan MessageID),
 		callHandlerChan:    make(chan Message),
 		producer:           producer,
-		nsqLookupdAddr:     nsqLookupdAddr,
 		nsqLookupdHTTPAddr: nsqLookupdHTTPAddr,
 		nsqdAddr:           nsqdAddr,
 		nsqdHTTPAddr:       nsqdHTTPAddr,
-		responseTopic:      responseTopic,
+		responsetopic:      responsetopic,
 	}
 	go s.start()
 	return s
@@ -139,59 +136,59 @@ func (s Service) start() {
 	}
 }
 
-// NewMessage creates a new message. Use Produce to emit this message to the
+// NewMessage creates a new colony Message. Use Produce to emit this message to the
 // network.
 func (s *Service) NewMessage(contentType string, payload []byte) Message {
-	from := Topic{
+	from := topic{
 		ServiceName: s.Name,
 		ServiceID:   s.ID,
 		ContentType: contentType,
 	}
 
 	return Message{
-		Topic:         from,
+		topic:         from,
 		FromName:      s.Name,
 		Payload:       payload,
 		Time:          time.Now(),
-		ResponseTopic: s.responseTopic,
+		responseTopic: s.responsetopic,
 		MessageID:     s.nextID(),
 		ContentType:   contentType,
 	}
 }
 
-// This builds a message specifically as a response to an earlier message. Use
-// Producer to send this to the originating service.
+// This builds a colony Message specifically as a response to a recieved Message. Use
+// Produce to send this to the originating service.
 func (s *Service) NewResponse(m Message, contentType string, payload []byte) Message {
 	return Message{
-		Topic:         m.ResponseTopic,
+		topic:         m.responseTopic,
 		FromName:      s.Name,
 		Payload:       payload,
 		Time:          time.Now(),
-		ResponseTopic: s.responseTopic,
+		responseTopic: s.responsetopic,
 		MessageID:     m.MessageID,
 		ContentType:   contentType,
 	}
 }
 
-func (s *Service) nextID() MessageID {
+func (s *Service) nextID() messageID {
 	s.i = s.i + 1
-	return MessageID(strconv.Itoa(s.i))
+	return messageID(strconv.Itoa(s.i))
 }
 
-type createTopicResponse struct {
+type createtopicResponse struct {
 	Status_code int
 	Status_txt  string
 	Data        string
 }
 
-func (s *Service) createTopic(topic string) error {
+func (s *Service) createtopic(topic string) error {
 	resp, err := http.Get("http://" + s.nsqdHTTPAddr + "/create_topic?topic=" + topic)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	var r createTopicResponse
+	var r createtopicResponse
 	json.Unmarshal(body, &r)
 	if r.Status_code != 200 {
 		log.Println(r)
@@ -200,6 +197,8 @@ func (s *Service) createTopic(topic string) error {
 	return nil
 }
 
+// The service's NSQ Handler routes messages from the service's response topic
+// to the appopriate Handler. This function can be safely ignored when building a service.
 func (s Service) HandleMessage(m *nsq.Message) error {
 	var out Message
 	err := json.Unmarshal(m.Body, &out)
@@ -220,13 +219,13 @@ func (s *Service) responseHandler() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	err = s.createTopic(s.responseTopic.GetName())
+	err = s.createtopic(s.responsetopic.getName())
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
-	topicName := s.responseTopic.GetName()
-	log.Println("about to start consumer on Topic", topicName, "with channel ->"+channelName+"<-")
+	topicName := s.responsetopic.getName()
+	log.Println("about to start consumer on topic", topicName, "with channel ->"+channelName+"<-")
 	log.Println(nsq.IsValidChannelName(channelName))
 	log.Println(channelName)
 	c, err := nsq.NewConsumer(topicName, channelName, conf)
@@ -238,22 +237,30 @@ func (s *Service) responseHandler() {
 	c.ConnectToNSQLookupd(s.nsqLookupdHTTPAddr)
 }
 
-// Produce emits a message to the netowrk on the appropriate topic. If the
-// handler is not nil, then the handler is registered with the service for
+// Produce emits a colony Message to the netowrk on the appropriate topic. If the
+// Handler is not nil, then it is registered with the service for
 // responses to this message.
-func (s Service) Produce(m Message, h HandlerFunc) error {
+func (s Service) Produce(m Message, h Handler) error {
 	if h != nil {
 		s.addHandlerChan <- handlerIDPair{
 			h:  h,
 			id: m.MessageID,
 		}
 	}
-	topic := m.Topic.GetName()
+	topic := m.topic.getName()
 	out, err := json.Marshal(m)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	s.producer.Publish(topic, out)
+	return nil
+}
+
+// Consume registers the supplied Handler as a reciever of colony Messages of the specified contentType.
+// When the Handler returns the service will no longer recieve messages of this type.
+func (s Service) Consume(contentType string, h Handler) error {
+	consumer := s.newConsumer(contentType)
+	h(consumer.C)
 	return nil
 }
 
@@ -271,10 +278,11 @@ func (c queueConsumer) HandleMessage(m *nsq.Message) error {
 	return nil
 }
 
-// A Consumer consumes data from the network of a specific contentType. Any
+// A consumer consumes data from the network of a specific contentType. Any
 // messages that appear in the network of this contentType will be routed to the
-// Consumer's channel.
-type Consumer struct {
+// consumer's channel. Use newConsumer to generate consumers. When authoring a
+// service use the service's Consume method.
+type consumer struct {
 	C           <-chan Message
 	ContentType string
 }
@@ -296,7 +304,6 @@ func (s Service) lookupTopics(contentType string) []string {
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	log.Println("body", string(body))
 	var t lookupdTopic
 	err = json.Unmarshal(body, &t)
 	if err != nil {
@@ -311,14 +318,14 @@ func (s Service) lookupTopics(contentType string) []string {
 	return out
 }
 
-// NewConsumer returns a colony Consumer of the specified contentType. The new
-// Consumer is hooked up and ready to go - messages will appear immediately on
+// newConsumer returns a colony consumer of the specified contentType. The new
+// consumer is hooked up and ready to go - messages will appear immediately on
 // its channel.
-func (s Service) NewConsumer(contentType string) Consumer {
+func (s Service) newConsumer(contentType string) consumer {
 	inbound := make(chan Message)
 	conf := nsq.NewConfig()
 
-	consumer := Consumer{
+	consumer := consumer{
 		C:           inbound,
 		ContentType: contentType,
 	}

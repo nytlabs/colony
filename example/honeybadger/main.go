@@ -8,28 +8,26 @@ import (
 )
 
 func main() {
-	lookupa := "localhost:4160"
 	lookupHTTPa := "localhost:4161"
 	daemona := "localhost:4150"
 	daemonHTTPaddr := "localhost:4151"
 	quitChan := make(chan bool)
-	s := colony.NewService("honeybadger", "1", lookupa, lookupHTTPa, daemona, daemonHTTPaddr)
+	s := colony.NewService("honeybadger", "1", lookupHTTPa, daemona, daemonHTTPaddr)
 
-	bees := s.NewConsumer("bees")
-
-	go func() {
+	go s.Consume("bees", func(bees <-chan colony.Message) error {
 		for {
-			select {
-			case bee := <-bees.C:
-				log.Println("got bee", bee, "!")
-				m := s.NewResponse(bee, "HoneyBadgerEtiquette", []byte("thanks for the bee!"))
+			bee := <-bees
+			log.Println("got bee", bee, "!")
+			m := s.NewResponse(bee, "HoneyBadgerEtiquette", []byte("thanks for the bee!"))
+			s.Produce(m, nil)
+			if rand.Float64() < 0.5 {
+				m = s.NewResponse(bee, "SnakeRequest", []byte("got any snkaes?"))
 				s.Produce(m, nil)
-				if rand.Float64() < 0.5 {
-					m = s.NewResponse(bee, "SnakeRequest", []byte("got any snkaes?"))
-					s.Produce(m, nil)
-				}
 			}
 		}
-	}()
+		return nil
+	},
+	)
+
 	<-quitChan
 }
