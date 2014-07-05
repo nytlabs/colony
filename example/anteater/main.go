@@ -49,7 +49,7 @@ func main() {
 			log.Println("got ant", string(ant.Payload))
 			m := s.NewMessage("bees", []byte("bee! bzz bzz"))
 
-			s.Produce(m, responseHandler)
+			s.Request(m, responseHandler)
 		}
 		return nil
 	},

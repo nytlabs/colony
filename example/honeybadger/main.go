@@ -19,11 +19,11 @@ func main() {
 			bee := <-bees
 			log.Println("got bee", string(bee.Payload), "!")
 			m := s.NewResponse(bee, "HoneyBadgerEtiquette", []byte("thanks for the bee!"))
-			s.Produce(m, nil)
+			s.Emit(m)
 			log.Println("sent response")
 			if rand.Float64() < 0.5 {
 				m = s.NewResponse(bee, "SnakeRequest", []byte("got any snkaes?"))
-				s.Produce(m, nil)
+				s.Emit(m)
 			}
 		}
 		return nil

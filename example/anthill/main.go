@@ -26,7 +26,7 @@ func main() {
 			<-ticker.C
 			log.Println("ant!")
 			m := s.NewMessage("ants", []byte("ant!"))
-			s.Produce(m, nil)
+			s.Emit(m)
 		}
 	}()
 

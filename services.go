@@ -136,7 +136,7 @@ func (s Service) start() {
 	}
 }
 
-// NewMessage creates a new colony Message. Use Produce to emit this message to the
+// NewMessage creates a new colony Message. Use Emit to emit this message to the
 // network.
 func (s *Service) NewMessage(contentType string, payload []byte) Message {
 	from := topic{
@@ -157,7 +157,7 @@ func (s *Service) NewMessage(contentType string, payload []byte) Message {
 }
 
 // This builds a colony Message specifically as a response to a recieved Message. Use
-// Produce to send this to the originating service.
+// Request to send this to the originating service.
 func (s *Service) NewResponse(m Message, contentType string, payload []byte) Message {
 	return Message{
 		Topic:         m.ResponseTopic,
@@ -237,7 +237,7 @@ func (s *Service) responseHandler() {
 	c.ConnectToNSQLookupd(s.nsqLookupdHTTPAddr)
 }
 
-//  Announce the production of a new content type to the colony, to alert existing services.
+// Announce the production of a new content type to the colony, to alert existing services.
 // If Announce is not called, only new services will discover this contentType.
 func (s Service) Announce(contentType string) error {
 	topicToAnnounce := topic{
@@ -260,10 +260,21 @@ func (s Service) Announce(contentType string) error {
 	return nil
 }
 
-// Produce emits a colony Message to the netowrk on the appropriate topic. If the
+// Emit sends a Message from the service to the colony
+func (s Service) Emit(m Message) error {
+	return s.produce(m, nil)
+}
+
+// Request sends a Message from the service to the colony and specifies a
+// Handler that will recieve the stream of responses.
+func (s Service) Request(m Message, h Handler) error {
+	return s.produce(m, h)
+}
+
+// produce emits a colony Message to the netowrk on the appropriate topic. If the
 // Handler is not nil, then it is registered with the service for
 // responses to this message.
-func (s Service) Produce(m Message, h Handler) error {
+func (s Service) produce(m Message, h Handler) error {
 	if h != nil {
 		s.addHandlerChan <- handlerIDPair{
 			h:  h,
