@@ -39,8 +39,10 @@ func main() {
 	log.Println("starting anteater service")
 	s := colony.NewService("Anteater", "1", lookupHTTPa, daemona, daemonHTTPaddr)
 
-	log.Println("starting ant consumer")
+	log.Println("announcing bee production")
+	s.Announce("bees")
 
+	log.Println("starting ant consumer")
 	go s.Consume("ants", func(ants <-chan colony.Message) error {
 		for {
 			ant := <-ants

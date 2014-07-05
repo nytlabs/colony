@@ -16,6 +16,7 @@ func main() {
 
 	log.Println("starting anteater service")
 	s := colony.NewService("Anthill", "1", lookupHTTPa, daemona, daemonHTTPaddr)
+	s.Announce("ants")
 
 	log.Println("starting ticker")
 	ticker := time.NewTicker(time.Duration(5) * time.Second)
