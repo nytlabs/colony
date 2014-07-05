@@ -38,8 +38,8 @@ type Message struct {
 	Time          time.Time // time message was generated
 	ContentType   string    // contentType of message
 	MessageID     messageID // message id
-	responseTopic topic     // responses to this message can be sent here
-	topic         topic     // topic message appears on
+	Topic         topic     // topic message appears on
+	ResponseTopic topic     // responses to this message can be sent here
 }
 
 type handlerIDPair struct {
@@ -66,7 +66,7 @@ type Service struct {
 	nsqLookupdHTTPAddr string
 	nsqdAddr           string
 	nsqdHTTPAddr       string
-	responsetopic      topic
+	responseTopic      topic
 }
 
 // NewService returns a colony service associated with a specific NSQ setup.
@@ -80,7 +80,7 @@ func NewService(name, id, nsqLookupdHTTPAddr, nsqdAddr, nsqdHTTPAddr string) *Se
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	responsetopic := topic{
+	responseTopic := topic{
 		ServiceName: name,
 		ServiceID:   id,
 		ContentType: "responses",
@@ -95,7 +95,7 @@ func NewService(name, id, nsqLookupdHTTPAddr, nsqdAddr, nsqdHTTPAddr string) *Se
 		nsqLookupdHTTPAddr: nsqLookupdHTTPAddr,
 		nsqdAddr:           nsqdAddr,
 		nsqdHTTPAddr:       nsqdHTTPAddr,
-		responsetopic:      responsetopic,
+		responseTopic:      responseTopic,
 	}
 	go s.start()
 	return s
@@ -136,7 +136,7 @@ func (s Service) start() {
 	}
 }
 
-// NewMessage creates a new colony Message. Use Produce to emit this message to the
+// NewMessage creates a new colony Message. Use Emit to emit this message to the
 // network.
 func (s *Service) NewMessage(contentType string, payload []byte) Message {
 	from := topic{
@@ -146,25 +146,25 @@ func (s *Service) NewMessage(contentType string, payload []byte) Message {
 	}
 
 	return Message{
-		topic:         from,
+		Topic:         from,
 		FromName:      s.Name,
 		Payload:       payload,
 		Time:          time.Now(),
-		responseTopic: s.responsetopic,
+		ResponseTopic: s.responseTopic,
 		MessageID:     s.nextID(),
 		ContentType:   contentType,
 	}
 }
 
 // This builds a colony Message specifically as a response to a recieved Message. Use
-// Produce to send this to the originating service.
+// Request to send this to the originating service.
 func (s *Service) NewResponse(m Message, contentType string, payload []byte) Message {
 	return Message{
-		topic:         m.responseTopic,
+		Topic:         m.ResponseTopic,
 		FromName:      s.Name,
 		Payload:       payload,
 		Time:          time.Now(),
-		responseTopic: s.responsetopic,
+		ResponseTopic: s.responseTopic,
 		MessageID:     m.MessageID,
 		ContentType:   contentType,
 	}
@@ -175,20 +175,20 @@ func (s *Service) nextID() messageID {
 	return messageID(strconv.Itoa(s.i))
 }
 
-type createtopicResponse struct {
+type createTopicResponse struct {
 	Status_code int
 	Status_txt  string
 	Data        string
 }
 
-func (s *Service) createtopic(topic string) error {
+func (s *Service) createTopic(topic string) error {
 	resp, err := http.Get("http://" + s.nsqdHTTPAddr + "/create_topic?topic=" + topic)
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 	defer resp.Body.Close()
 	body, err := ioutil.ReadAll(resp.Body)
-	var r createtopicResponse
+	var r createTopicResponse
 	json.Unmarshal(body, &r)
 	if r.Status_code != 200 {
 		log.Println(r)
@@ -219,12 +219,12 @@ func (s *Service) responseHandler() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	err = s.createtopic(s.responsetopic.getName())
+	err = s.createTopic(s.responseTopic.getName())
 	if err != nil {
 		log.Fatal(err.Error())
 	}
 
-	topicName := s.responsetopic.getName()
+	topicName := s.responseTopic.getName()
 	log.Println("about to start consumer on topic", topicName, "with channel ->"+channelName+"<-")
 	log.Println(nsq.IsValidChannelName(channelName))
 	log.Println(channelName)
@@ -237,17 +237,52 @@ func (s *Service) responseHandler() {
 	c.ConnectToNSQLookupd(s.nsqLookupdHTTPAddr)
 }
 
-// Produce emits a colony Message to the netowrk on the appropriate topic. If the
+// Announce the production of a new content type to the colony, to alert existing services.
+// If Announce is not called, only new services will discover this contentType.
+func (s Service) Announce(contentType string) error {
+	topicToAnnounce := topic{
+		ServiceName: s.Name,
+		ServiceID:   s.ID,
+		ContentType: contentType,
+	}
+	m := Message{
+		FromName:    s.Name,
+		Time:        time.Now(),
+		ContentType: contentType,
+		Topic:       topicToAnnounce,
+	}
+	out, err := json.Marshal(m)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	s.createTopic(topicToAnnounce.getName())
+	s.producer.Publish("colony-announce", out)
+	return nil
+}
+
+// Emit sends a Message from the service to the colony
+func (s Service) Emit(m Message) error {
+	return s.produce(m, nil)
+}
+
+// Request sends a Message from the service to the colony and specifies a
+// Handler that will recieve the stream of responses.
+func (s Service) Request(m Message, h Handler) error {
+	return s.produce(m, h)
+}
+
+// produce emits a colony Message to the netowrk on the appropriate topic. If the
 // Handler is not nil, then it is registered with the service for
 // responses to this message.
-func (s Service) Produce(m Message, h Handler) error {
+func (s Service) produce(m Message, h Handler) error {
 	if h != nil {
 		s.addHandlerChan <- handlerIDPair{
 			h:  h,
 			id: m.MessageID,
 		}
 	}
-	topic := m.topic.getName()
+	log.Println("MESSAGE TOPIC", m.Topic)
+	topic := m.Topic.getName()
 	out, err := json.Marshal(m)
 	if err != nil {
 		log.Fatal(err.Error())
@@ -345,5 +380,51 @@ func (s Service) newConsumer(contentType string) consumer {
 		})
 		c.ConnectToNSQLookupd(s.nsqLookupdHTTPAddr)
 	}
+
+	// begin the watch for new topics of this content type
+	go s.watchForContentType(contentType, inbound)
+
+	// return the consumer to the caller
 	return consumer
+}
+
+func (s Service) watchForContentType(contentType string, inbound chan Message) {
+	channel := s.Name + "-" + s.ID + "-" + contentType
+
+	s.createTopic("colony-announce") // just in case
+
+	conf := nsq.NewConfig()
+
+	// connect to the colonly-announce topic
+	c, err := nsq.NewConsumer("colony-announce", channel, conf)
+	if err != nil {
+		log.Fatal(err.Error())
+	}
+	announcements := make(chan Message)
+	c.SetHandler(queueConsumer{
+		C: announcements,
+	})
+	c.ConnectToNSQLookupd(s.nsqLookupdHTTPAddr)
+
+	// listen for new announcements
+	for {
+		msg := <-announcements
+
+		// if the announcement isn't about this contentType we're not interested
+		if msg.ContentType != contentType {
+			continue
+		}
+
+		// if the announcement is about this content type, then we need to associate
+		// this colony consumer with a new nsq.Consumer.
+		log.Println("connecting to new topic:", msg.Topic.getName())
+		c, err := nsq.NewConsumer(msg.Topic.getName(), channel, conf)
+		if err != nil {
+			log.Fatal(err.Error())
+		}
+		c.SetHandler(queueConsumer{
+			C: inbound,
+		})
+		c.ConnectToNSQLookupd(s.nsqLookupdHTTPAddr)
+	}
 }
