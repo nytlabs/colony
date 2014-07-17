@@ -47,7 +47,7 @@ type handlerIDPair struct {
 	id messageID
 }
 
-// Handlers recieve a stream of Messages over the suppled channel
+// Handlers receive a stream of Messages over the supplied channel
 // in response to a corresponding outbound message. Each service needs
 // to provide a Handler for each content type it consumes, and for
 // each outbound message that can be responded to.
