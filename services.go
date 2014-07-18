@@ -157,7 +157,7 @@ func (s *Service) NewMessage(contentType string, payload []byte) Message {
 }
 
 // This builds a colony Message specifically as a response to a recieved Message. Use
-// Request to send this to the originating service.
+// Emit or Request to send this Message to the originating service.
 func (s *Service) NewResponse(m Message, contentType string, payload []byte) Message {
 	return Message{
 		Topic:         m.ResponseTopic,
