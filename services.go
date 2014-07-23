@@ -233,7 +233,7 @@ func (s *Service) responseHandler() {
 	if err != nil {
 		log.Fatal(err.Error())
 	}
-	c.SetHandler(s)
+	c.AddHandler(s)
 	c.ConnectToNSQLookupd(s.nsqLookupdHTTPAddr)
 }
 
@@ -375,7 +375,7 @@ func (s Service) newConsumer(contentType string) consumer {
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-		c.SetHandler(queueConsumer{
+		c.AddHandler(queueConsumer{
 			C: inbound,
 		})
 		c.ConnectToNSQLookupd(s.nsqLookupdHTTPAddr)
@@ -401,7 +401,7 @@ func (s Service) watchForContentType(contentType string, inbound chan Message) {
 		log.Fatal(err.Error())
 	}
 	announcements := make(chan Message)
-	c.SetHandler(queueConsumer{
+	c.AddHandler(queueConsumer{
 		C: announcements,
 	})
 	c.ConnectToNSQLookupd(s.nsqLookupdHTTPAddr)
@@ -418,11 +418,11 @@ func (s Service) watchForContentType(contentType string, inbound chan Message) {
 		// if the announcement is about this content type, then we need to associate
 		// this colony consumer with a new nsq.Consumer.
 		log.Println("connecting to new topic:", msg.Topic.getName())
-		c, err := nsq.NewConsumer(msg.Topic.getName(), channel, conf)
+		c, err := nsq.NewConsumer(msg.Topic.getName(), s.Name+"-"+s.ID, conf)
 		if err != nil {
 			log.Fatal(err.Error())
 		}
-		c.SetHandler(queueConsumer{
+		c.AddHandler(queueConsumer{
 			C: inbound,
 		})
 		c.ConnectToNSQLookupd(s.nsqLookupdHTTPAddr)
