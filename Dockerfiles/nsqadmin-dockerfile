@@ -1,4 +1,0 @@
-FROM mikedewar/nsq
-
-EXPOSE 4171
-ENTRYPOINT nsqadmin --lookupd-http-address=$NSQLOOKUPD_PORT_4161_TCP_ADDR:4161
