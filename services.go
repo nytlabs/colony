@@ -110,8 +110,8 @@ func NewService(name, id, nsqLookupd string) *Service {
 	productionNSQD := n.Data.Producers[rand.Intn(len(n.Data.Producers))]
 	nsqdAddr := productionNSQD.Broadcast_address + ":" + strconv.Itoa(productionNSQD.Tcp_port)
 	nsqdHTTPAddr := productionNSQD.Broadcast_address + ":" + strconv.Itoa(productionNSQD.Http_port)
-	log.Println(nsqdAddr)
-	log.Println(nsqdHTTPAddr)
+	log.Println("Using NSQD TCP:", nsqdAddr)
+	log.Println("Using NSQD HTTP:", nsqdHTTPAddr)
 
 	conf := nsq.NewConfig()
 	err = conf.Set("lookupd_poll_interval", "5s")
