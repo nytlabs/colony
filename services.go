@@ -91,7 +91,7 @@ type producer struct {
 
 // NewService returns a colony service associated with a specific NSQ setup.
 // Provide NSQ's lookupd address. This Service will be associated with an
-// NSQD node in the network at random. If you're running NSQ with the default
+// NSQD node in the network at random. If you're running NSQ locally with the default
 // port then this will be "0.0.0.0/4161"
 func NewService(name, id, nsqLookupd string) *Service {
 	resp, err := http.Get("http://" + nsqLookupd + "/nodes")
