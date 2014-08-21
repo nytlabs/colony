@@ -9,13 +9,10 @@ import (
 
 func main() {
 	lookupHTTPa := "localhost:4161"
-	daemona := "localhost:4150"
-	daemonHTTPaddr := "localhost:4151"
-
 	quitChan := make(chan bool)
 
 	log.Println("starting anteater service")
-	s := colony.NewService("Anthill", "1", lookupHTTPa, daemona, daemonHTTPaddr)
+	s := colony.NewService("Anthill", "1", lookupHTTPa)
 	s.Announce("ants")
 
 	log.Println("starting ticker")

@@ -32,12 +32,10 @@ func responseHandler(c <-chan colony.Message) error {
 
 func main() {
 	lookupHTTPa := "localhost:4161"
-	daemona := "localhost:4150"
-	daemonHTTPaddr := "localhost:4151"
 	quitChan := make(chan bool)
 
 	log.Println("starting anteater service")
-	s := colony.NewService("Anteater", "1", lookupHTTPa, daemona, daemonHTTPaddr)
+	s := colony.NewService("Anteater", "1", lookupHTTPa)
 
 	log.Println("announcing bee production")
 	s.Announce("bees")
