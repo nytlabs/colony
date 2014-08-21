@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"strconv"
 	"strings"
@@ -69,13 +70,51 @@ type Service struct {
 	responseTopic      topic
 }
 
+type nodesResponse struct {
+	Status_code int
+	Status_txt  string
+	Data        producers
+}
+type producers struct {
+	Producers []producer
+}
+type producer struct {
+	Topics            []string
+	Tombstones        []string
+	Version           string
+	Http_port         int
+	Tcp_port          int
+	Broadcast_address string
+	Hostname          string
+	Remote_address    string
+}
+
 // NewService returns a colony service associated with a specific NSQ setup.
-// Provide NSQ's lookupd HTTP address, and both the NSQ
-// daemon's TCP and HTTP addresses. If running the default NSQ these
-// ports are :4161, :4150, and :4151 respectively.
-func NewService(name, id, nsqLookupdHTTPAddr, nsqdAddr, nsqdHTTPAddr string) *Service {
+// Provide NSQ's lookupd address. This Service will be associated with an
+// NSQD node in the network at random. If you're running NSQ with the default
+// port then this will be "0.0.0.0/4161"
+func NewService(name, id, nsqLookupd string) *Service {
+	resp, err := http.Get("http://" + nsqLookupd + "/nodes")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+	body, err := ioutil.ReadAll(resp.Body)
+	var n nodesResponse
+	json.Unmarshal(body, &n)
+	if n.Status_code != 200 {
+		log.Println(n)
+		log.Fatal(errors.New("could not get list of nsqd nodes"))
+	}
+
+	productionNSQD := n.Data.Producers[rand.Intn(len(n.Data.Producers))]
+	nsqdAddr := productionNSQD.Broadcast_address + ":" + strconv.Itoa(productionNSQD.Tcp_port)
+	nsqdHTTPAddr := productionNSQD.Broadcast_address + ":" + strconv.Itoa(productionNSQD.Http_port)
+	log.Println(nsqdAddr)
+	log.Println(nsqdHTTPAddr)
+
 	conf := nsq.NewConfig()
-	err := conf.Set("lookupd_poll_interval", "5s")
+	err = conf.Set("lookupd_poll_interval", "5s")
 	producer, err := nsq.NewProducer(nsqdAddr, conf)
 	if err != nil {
 		log.Fatal(err.Error())
@@ -92,7 +131,7 @@ func NewService(name, id, nsqLookupdHTTPAddr, nsqdAddr, nsqdHTTPAddr string) *Se
 		addHandlerChan:     make(chan handlerIDPair),
 		callHandlerChan:    make(chan Message),
 		producer:           producer,
-		nsqLookupdHTTPAddr: nsqLookupdHTTPAddr,
+		nsqLookupdHTTPAddr: nsqLookupd,
 		nsqdAddr:           nsqdAddr,
 		nsqdHTTPAddr:       nsqdHTTPAddr,
 		responseTopic:      responseTopic,

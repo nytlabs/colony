@@ -9,10 +9,8 @@ import (
 
 func main() {
 	lookupHTTPa := "localhost:4161"
-	daemona := "localhost:4150"
-	daemonHTTPaddr := "localhost:4151"
 	quitChan := make(chan bool)
-	s := colony.NewService("honeybadger", "1", lookupHTTPa, daemona, daemonHTTPaddr)
+	s := colony.NewService("honeybadger", "1", lookupHTTPa)
 
 	go s.Consume("bees", func(bees <-chan colony.Message) error {
 		for {
