@@ -107,7 +107,11 @@ func NewService(name, id, nsqLookupd string) *Service {
 		log.Fatal(errors.New("could not get list of nsqd nodes"))
 	}
 
-	productionNSQD := n.Data.Producers[rand.Intn(len(n.Data.Producers))]
+	nProducers := len(n.Data.Producers)
+	if nProducers <= 0 {
+		log.Fatal(errors.New("found no NSQDs!"))
+	}
+	productionNSQD := n.Data.Producers[rand.Intn(nProducers)]
 	nsqdAddr := productionNSQD.Broadcast_address + ":" + strconv.Itoa(productionNSQD.Tcp_port)
 	nsqdHTTPAddr := productionNSQD.Broadcast_address + ":" + strconv.Itoa(productionNSQD.Http_port)
 	log.Println("Using NSQD TCP:", nsqdAddr)
