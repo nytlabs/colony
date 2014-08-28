@@ -48,7 +48,7 @@ type handlerIDPair struct {
 	id messageID
 }
 
-// Handlers receive a stream of Messages over the supplied channel
+// Handler receive a stream of Messages over the supplied channel
 // in response to a corresponding outbound message. Each service needs
 // to provide a Handler for each content type it consumes, and for
 // each outbound message that can be responded to.
@@ -109,7 +109,7 @@ func NewService(name, id, nsqLookupd string) *Service {
 
 	nProducers := len(n.Data.Producers)
 	if nProducers <= 0 {
-		log.Fatal(errors.New("found no NSQDs!"))
+		log.Fatal(errors.New("found no NSQ daemons"))
 	}
 	productionNSQD := n.Data.Producers[rand.Intn(nProducers)]
 	nsqdAddr := productionNSQD.Broadcast_address + ":" + strconv.Itoa(productionNSQD.Tcp_port)
@@ -199,7 +199,7 @@ func (s *Service) NewMessage(contentType string, payload []byte) Message {
 	}
 }
 
-// This builds a colony Message specifically as a response to a recieved Message. Use
+// NewResponse builds a colony Message specifically as a response to a recieved Message. Use
 // Emit or Request to send this Message to the originating service.
 func (s *Service) NewResponse(m Message, contentType string, payload []byte) Message {
 	return Message{
@@ -240,7 +240,7 @@ func (s *Service) createTopic(topic string) error {
 	return nil
 }
 
-// The service's NSQ Handler routes messages from the service's response topic
+// HandleMessage routes messages from the service's response topic
 // to the appopriate Handler. This function can be safely ignored when building a service.
 func (s Service) HandleMessage(m *nsq.Message) error {
 	var out Message
