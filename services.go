@@ -4,6 +4,7 @@ package colony
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bitly/go-nsq"
+	"github.com/daviddengcn/go-colortext"
 )
 
 // topic contains the components of an NSQ topic used for communication between
@@ -114,8 +116,6 @@ func NewService(name, id, nsqLookupd string) *Service {
 	productionNSQD := n.Data.Producers[rand.Intn(nProducers)]
 	nsqdAddr := productionNSQD.Broadcast_address + ":" + strconv.Itoa(productionNSQD.Tcp_port)
 	nsqdHTTPAddr := productionNSQD.Broadcast_address + ":" + strconv.Itoa(productionNSQD.Http_port)
-	log.Println("Using NSQD TCP:", nsqdAddr)
-	log.Println("Using NSQD HTTP:", nsqdHTTPAddr)
 
 	conf := nsq.NewConfig()
 	err = conf.Set("lookupd_poll_interval", "5s")
@@ -140,6 +140,19 @@ func NewService(name, id, nsqLookupd string) *Service {
 		nsqdHTTPAddr:       nsqdHTTPAddr,
 		responseTopic:      responseTopic,
 	}
+	ct.ChangeColor(ct.Cyan, false, ct.None, false)
+	fmt.Println(`
+                                        __
+                                       // \
+                                       \\_/ //`)
+	ct.ChangeColor(ct.Magenta, true, ct.None, false)
+	fmt.Print(`     colony`)
+	ct.ChangeColor(ct.Cyan, false, ct.None, false)
+	fmt.Print("          ''-.._.-''-.._.. -(||)(')\n")
+	fmt.Print("                                       '''\n\n")
+	ct.ResetColor()
+	log.Println("Using NSQD TCP:", nsqdAddr)
+	log.Println("Using NSQD HTTP:", nsqdHTTPAddr)
 	go s.start()
 	return s
 }
