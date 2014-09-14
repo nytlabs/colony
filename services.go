@@ -4,6 +4,7 @@ package colony
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/ioutil"
 	"log"
 	"math/rand"
@@ -13,6 +14,7 @@ import (
 	"time"
 
 	"github.com/bitly/go-nsq"
+	"github.com/daviddengcn/go-colortext"
 )
 
 // topic contains the components of an NSQ topic used for communication between
@@ -103,7 +105,6 @@ func NewService(name, id, nsqLookupd string) *Service {
 	var n nodesResponse
 	json.Unmarshal(body, &n)
 	if n.Status_code != 200 {
-		log.Println(n)
 		log.Fatal(errors.New("could not get list of nsqd nodes"))
 	}
 
@@ -114,8 +115,6 @@ func NewService(name, id, nsqLookupd string) *Service {
 	productionNSQD := n.Data.Producers[rand.Intn(nProducers)]
 	nsqdAddr := productionNSQD.Broadcast_address + ":" + strconv.Itoa(productionNSQD.Tcp_port)
 	nsqdHTTPAddr := productionNSQD.Broadcast_address + ":" + strconv.Itoa(productionNSQD.Http_port)
-	log.Println("Using NSQD TCP:", nsqdAddr)
-	log.Println("Using NSQD HTTP:", nsqdHTTPAddr)
 
 	conf := nsq.NewConfig()
 	err = conf.Set("lookupd_poll_interval", "5s")
@@ -140,6 +139,19 @@ func NewService(name, id, nsqLookupd string) *Service {
 		nsqdHTTPAddr:       nsqdHTTPAddr,
 		responseTopic:      responseTopic,
 	}
+	ct.ChangeColor(ct.Cyan, false, ct.None, false)
+	fmt.Println(`
+                                        __
+                                       // \
+                                       \\_/ //`)
+	ct.ChangeColor(ct.Magenta, true, ct.None, false)
+	fmt.Print(`     colony`)
+	ct.ChangeColor(ct.Cyan, false, ct.None, false)
+	fmt.Print("          ''-.._.-''-.._.. -(||)(')\n")
+	fmt.Print("                                       '''\n\n")
+	ct.ResetColor()
+	log.Println("COLONY\t Using NSQD TCP:", nsqdAddr)
+	log.Println("COLONY\t Using NSQD HTTP:", nsqdHTTPAddr)
 	go s.start()
 	return s
 }
@@ -157,21 +169,18 @@ func (s Service) start() {
 			c := make(chan Message)
 			// add the channel to our handler map
 			s.handlers[pair.id] = c
-			log.Println("activated handler for message with id", pair.id)
 			// set the handler going
 			go func() {
 				err := pair.h(c)
 				if err != nil {
-					log.Println(err.Error())
+					log.Fatal(err.Error())
 				}
 				// once the handler is complete, delete it from the handler map
-				log.Println("removing handler for message", pair.id)
 				delete(s.handlers, pair.id)
 			}()
 		case msg := <-s.callHandlerChan:
 			c, ok := s.handlers[msg.MessageID]
 			if !ok {
-				log.Println("could not find message handler for id", msg.MessageID)
 				continue
 			}
 			c <- msg
@@ -234,7 +243,6 @@ func (s *Service) createTopic(topic string) error {
 	var r createTopicResponse
 	json.Unmarshal(body, &r)
 	if r.Status_code != 200 {
-		log.Println(r)
 		return errors.New("could not creat topic " + topic)
 	}
 	return nil
@@ -255,7 +263,7 @@ func (s Service) HandleMessage(m *nsq.Message) error {
 func (s *Service) responseHandler() {
 	// initialise response topic
 	channelName := s.Name + "-" + s.ID + "-responseHandler"
-	log.Println("CHANNEL NAME", channelName)
+	log.Println("COLONY\t", s.Name, "is using response channel", channelName)
 
 	conf := nsq.NewConfig()
 	err := conf.Set("lookupd_poll_interval", "5s")
@@ -268,11 +276,7 @@ func (s *Service) responseHandler() {
 	}
 
 	topicName := s.responseTopic.getName()
-	log.Println("about to start consumer on topic", topicName, "with channel ->"+channelName+"<-")
-	log.Println(nsq.IsValidChannelName(channelName))
-	log.Println(channelName)
 	c, err := nsq.NewConsumer(topicName, channelName, conf)
-	log.Println("HELLO")
 	if err != nil {
 		log.Fatal(err.Error())
 	}
@@ -324,7 +328,6 @@ func (s Service) produce(m Message, h Handler) error {
 			id: m.MessageID,
 		}
 	}
-	log.Println("MESSAGE TOPIC", m.Topic)
 	topic := m.Topic.getName()
 	out, err := json.Marshal(m)
 	if err != nil {
@@ -460,7 +463,7 @@ func (s Service) watchForContentType(contentType string, inbound chan Message) {
 
 		// if the announcement is about this content type, then we need to associate
 		// this colony consumer with a new nsq.Consumer.
-		log.Println("connecting to new topic:", msg.Topic.getName())
+		log.Println("COLONY\t connecting to new topic:", msg.Topic.getName())
 		c, err := nsq.NewConsumer(msg.Topic.getName(), s.Name+"-"+s.ID, conf)
 		if err != nil {
 			log.Fatal(err.Error())
